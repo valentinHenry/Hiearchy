@@ -2,10 +2,10 @@ package fr.valentinhenry
 package runtime4s
 
 import runtime4s.Runtime._
+import runtime4s.RuntimeImpls.RuntimeModuleCollection
 
 import cats.effect.ExitCode.Success
 import cats.effect.{ExitCode, IO, IOApp}
-import fr.valentinhenry.runtime4s.RuntimeImpls.RuntimeModuleCollection
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 object Test extends IOApp {
@@ -24,22 +24,23 @@ object Test extends IOApp {
         Runtime.provide_(Module2(config))
       }
 
-    def makeSubModule: Runtime[IO, Config3, Module3, Module1 with Module2, Unit] =
+    def makeSubModule: Runtime[IO, Config3, Module3, Module2 with Module1, Unit] =
       for {
-        ms      <- Runtime.summon2[Module1, Module2]
+        m1      <- Runtime.summon[Module1]
+        m2      <- Runtime.summon[Module2]
         config3 <- Runtime.get[Config3]
-        _       <- Runtime.provide_(Module3(config3, ms._1, ms._2))
+        _       <- Runtime.provide_(Module3(config3, m1, m2))
       } yield ()
-//      Runtime.summon2[Module1, Module2].flatMap { case (m1, m2) =>
-//        Runtime.get[Config3].flatMap { config3 =>
-//          Runtime.provide_(Module3(config3, m1, m2))
-//        }
-//      }
 
     Runtime.empty
+      .product_(provideModule2)
+      .product_(provideModule2)
+      .product_(provideModule2)
       .product_(provideModule1)
-//      .product_(provideModule2)
-//      .product_(makeSubModule)
+      .product_(Runtime.provide_(Module4()))
+      .product_(Runtime.provide_(Module4()))
+      .product_(Runtime.provide_(Module4()))
+      .product_(makeSubModule)
       .run(Config())
       .as(Success)
   }
@@ -66,3 +67,5 @@ final case class Module3(config: Config3, m1: Module1, m2: Module2) extends Modi
       collection.useF[Module2](m2 => Slf4jLogger.getLogger[IO].info(s"Well, i'm before running: ${m2.text}"))
     )
 }
+
+final case class Module4()

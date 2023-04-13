@@ -1,0 +1,18 @@
+# sbt
+project/project
+target
+dumps
+project/.bloop
+.bsp/
+
+# IntelliJ
+.idea
+
+# Log files
+*.log
+
+# Mac
+.DS_Store
+*.icloud
+
+.env

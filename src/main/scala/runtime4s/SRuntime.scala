@@ -1,8 +1,7 @@
 package fr.valentinhenry
 package runtime4s
 
-import runtime4s.Runtime.EmptyRequirement
-import runtime4s.capabilities.HasRequirements
+import runtime4s.capabilities.NoPostProvidedModules
 
 import cats._
 import cats.effect.Sync
@@ -14,10 +13,10 @@ import shapeless.<:!<
 import scala.annotation.unchecked.uncheckedVariance
 import scala.annotation.{implicitNotFound, unused}
 
-sealed trait Runtime[F[_], -Environment, -Provided, Requirements, +A] {
+sealed trait Runtime[F[_], -Environment, -Provided, -Requirements, +A] {
   def run(e: Environment)(implicit
     @implicitNotFound("A runtime cannot be run unless all requirements are fulfilled")
-    isRunnable: Provided <:< Requirements @uncheckedVariance,
+    isRunnable: Provided @uncheckedVariance <:< Requirements,
     P: Parallel[F],
     S: Sync[F]
   ): F[Unit]
@@ -26,31 +25,56 @@ sealed trait Runtime[F[_], -Environment, -Provided, Requirements, +A] {
 
   def as[B](b: => B): Runtime[F, Environment, Provided, Requirements, B] = map(_ => b)
 
-  def flatMap[E, P, R, B](f: A => Runtime[F, E, P, R, B])(implicit
-    ev: HasRequirements[Provided, R] @uncheckedVariance
-  ): Runtime[F, E with Environment, P with Provided, Requirements, B]
+  def flatMap[E, P, R, B](
+    f: A => Runtime[F, E, P, R, B]
+  )(implicit
+    ev: NoPostProvidedModules[Provided, Requirements, P] @uncheckedVariance
+  ): Runtime[F, E with Environment, P with Provided, R with Requirements, B]
 
-  def flatMapF[E, P, R, B](f: A => F[Runtime[F, E, P, R, B]])(implicit
-    ev: HasRequirements[Provided, R] @uncheckedVariance
-  ): Runtime[F, E with Environment, P with Provided, Requirements, B]
+  def flatTap[E, P, R, B](
+    f: A => Runtime[F, E, P, R, B]
+  )(implicit
+    ev: NoPostProvidedModules[Provided, Requirements, P] @uncheckedVariance
+  ): Runtime[F, E with Environment, P with Provided, R with Requirements, A]
+
+  def flatMapF[E, P, R, B](
+    f: A => F[Runtime[F, E, P, R, B]]
+  )(implicit
+    ev: NoPostProvidedModules[Provided, Requirements, P] @uncheckedVariance
+  ): Runtime[F, E with Environment, P with Provided, R with Requirements, B]
+
+  def flatTapF[E, P, R, B](
+    f: A => F[Runtime[F, E, P, R, B]]
+  )(implicit
+    ev: NoPostProvidedModules[Provided, Requirements, P] @uncheckedVariance
+  ): Runtime[F, E with Environment, P with Provided, R with Requirements, A]
 
   def evalMap[B](f: A => F[B]): Runtime[F, Environment, Provided, Requirements, B]
+  def evalTap[B](f: A => F[B]): Runtime[F, Environment, Provided, Requirements, A]
 
-  def product[E, P, R, B](r: Runtime[F, E, P, R, B])(implicit
-    ev: HasRequirements[Provided, R] @uncheckedVariance
-  ): Runtime[F, E with Environment, P with Provided, Requirements, (A, B)]
+  def product[E, P, R, B](
+    r: Runtime[F, E, P, R, B]
+  )(implicit
+    ev: NoPostProvidedModules[Provided, Requirements, P] @uncheckedVariance
+  ): Runtime[F, E with Environment, P with Provided, R with Requirements, (A, B)]
 
-  def product_[E, P, R, B](r: Runtime[F, E, P, R, B])(implicit
-    ev: HasRequirements[Provided, R] @uncheckedVariance
-  ): Runtime[F, E with Environment, P with Provided, Requirements, Unit]
+  def product_[E, P, R, B](
+    r: Runtime[F, E, P, R, B]
+  )(implicit
+    ev: NoPostProvidedModules[Provided, Requirements, P] @uncheckedVariance
+  ): Runtime[F, E with Environment, P with Provided, R with Requirements, Unit]
 
-  def productL[E, P, R, B](r: Runtime[F, E, P, R, B])(implicit
-    ev: HasRequirements[Provided, R] @uncheckedVariance
-  ): Runtime[F, E with Environment, P with Provided, Requirements, A]
+  def productL[E, P, R, B](
+    r: Runtime[F, E, P, R, B]
+  )(implicit
+    ev: NoPostProvidedModules[Provided, Requirements, P] @uncheckedVariance
+  ): Runtime[F, E with Environment, P with Provided, R with Requirements, A]
 
-  def productR[E, P, R, B](r: Runtime[F, E, P, R, B])(implicit
-    ev: HasRequirements[Provided, R] @uncheckedVariance
-  ): Runtime[F, E with Environment, P with Provided, Requirements, B]
+  def productR[E, P, R, B](
+    r: Runtime[F, E, P, R, B]
+  )(implicit
+    ev: NoPostProvidedModules[Provided, Requirements, P] @uncheckedVariance
+  ): Runtime[F, E with Environment, P with Provided, R with Requirements, B]
 
   def narrow[P >: Provided @uncheckedVariance]: Runtime[F, Environment, P, Requirements, A]
 
@@ -69,7 +93,7 @@ object Runtime {
   type EmptyRequirement = Any
 
   def empty[F[_]: Monad]: RA[F, Unit] =
-    RuntimeImpls.Consumer[F, EmptyEnvironment, EmptyProvided, EmptyProvided, Unit, Unit](
+    RuntimeImpls.Consumer[F, EmptyEnvironment, EmptyProvided, EmptyRequirement, Unit, Unit](
       inner = (_, _) => ().pure[F],
       extractProvided = _ => ()
     )
@@ -81,27 +105,12 @@ object Runtime {
       extractProvided = _ => ()
     )
 
-  def requires[F[_]: Monad, M: RuntimeKey]: Runtime[F, EmptyEnvironment, M, M, M] =
-    RuntimeImpls.Consumer[F, EmptyEnvironment, M, M, M, M](
-      inner = (_, provided) => provided.pure[F],
-      extractProvided = _.get(RuntimeKey[M]).asInstanceOf[M]
-    )
-
   // Summon a provided module
   def summon[F[_]: Monad, M: RuntimeKey]: Runtime[F, EmptyEnvironment, EmptyProvided, M, M] =
     RuntimeImpls.Consumer[F, EmptyEnvironment, EmptyProvided, M, M, M](
       inner = (_, requirements) => requirements.pure[F],
-      extractProvided = _.get(RuntimeKey[M]).asInstanceOf[M]
+      extractProvided = _(RuntimeKey[M]).asInstanceOf[M]
     )
-  def summon2[F[_]: Monad, M1: RuntimeKey, M2: RuntimeKey]
-    : Runtime[F, EmptyEnvironment, EmptyProvided, M1 with M2, (M1, M2)] =
-    RuntimeImpls.Consumer[F, EmptyEnvironment, EmptyProvided, M1 with M2, (M1, M2), (M1, M2)](
-      inner = (_, requirements) => requirements.pure[F],
-      extractProvided =
-        provided => (provided.get(RuntimeKey[M1]).asInstanceOf[M1], provided.get(RuntimeKey[M2]).asInstanceOf[M2])
-    )
-
-  // TODO summon 3,4,...25?
 
   trait ProvideRequirements[F[_], A] {
     type Requirements
@@ -178,13 +187,8 @@ object Runtime {
     // Gets an environment value
     def get[E]: Runtime[F, E, EmptyProvided, EmptyRequirement, E] = Runtime.get[F, E]
 
-    def requires[M: RuntimeKey]: Runtime[F, EmptyEnvironment, M, M, M] = Runtime.requires[F, M]
-
     // Summon a provided module
     def summon[M: RuntimeKey]: Runtime[F, EmptyEnvironment, EmptyProvided, M, M] = Runtime.summon[F, M]
-
-    def summon2[M1: RuntimeKey, M2: RuntimeKey]: Runtime[F, EmptyEnvironment, EmptyProvided, M1 with M2, (M1, M2)] =
-      Runtime.summon2[F, M1, M2]
 
     def provide[A: RuntimeKey](a: A)(implicit
       R: ProvideRequirements[F, A]
@@ -239,11 +243,16 @@ private[runtime4s] object RuntimeImpls {
           )
         }
 
+        def run(modules: ModuleMap): F[Unit] =
+          modules.values.toList.collect { case m: RunnableRuntimeModule[F] @unchecked => m }
+            .map(_.run)
+            .parSequence_
+
         for {
-          collected <- collect(e, RuntimeModuleCollector(Map.empty[RuntimeKey[_], Any], Nil)) // FIXME empty ?
+          collected <- collect(e, RuntimeModuleCollector(Map.empty[RuntimeKey[_], Any], Nil))
           modules   <- collected._1.toCollection[F].beforeRun
           _         <- printRuntime(modules)
-          _         <- Applicative[F].unit                                                    // FIXME before run + run
+          _         <- run(modules)
         } yield ()
       }
 
@@ -265,38 +274,63 @@ private[runtime4s] object RuntimeImpls {
 
     override def evalMap[B](f: A => F[B]): Impl[F, Environment, Provided, Requirements, B]
 
-    override def flatMap[E, P, R, B](f: A => Runtime[F, E, P, R, B])(implicit
-      ev: HasRequirements[Provided, R]
-    ): Runtime[F, E with Environment, P with Provided, Requirements, B] =
+    override def flatMap[E, P, R, B](
+      f: A => Runtime[F, E, P, R, B]
+    )(implicit
+      ev: NoPostProvidedModules[Provided, Requirements, P]
+    ): Runtime[F, E with Environment, P with Provided, R with Requirements, B] =
       flatMapF[E, P, R, B](f(_).pure[F])
 
-    override def flatMapF[E, P, R, B](f: A => F[Runtime[F, E, P, R, B]])(implicit
-      ev: HasRequirements[Provided, R]
-    ): Runtime[F, E with Environment, P with Provided, Requirements, B] =
+    override def flatTap[E, P, R, B](f: A => Runtime[F, E, P, R, B])(implicit
+      ev: NoPostProvidedModules[Provided, Requirements, P]
+    ): Runtime[F, E with Environment, P with Provided, R with Requirements, A] =
+      flatMap(a => f(a).as(a))
+
+    override def flatMapF[E, P, R, B](
+      f: A => F[Runtime[F, E, P, R, B]]
+    )(implicit
+      ev: NoPostProvidedModules[Provided, Requirements, P]
+    ): Runtime[F, E with Environment, P with Provided, R with Requirements, B] =
       FlatMap[F, Environment, Provided, Requirements, E, P, R, A, B](
         this,
         f.asInstanceOf[A => F[Impl[F, E, P, R, B]]]
       )
 
-    override final def product[E, P, R, B](r: Runtime[F, E, P, R, B])(implicit
-      ev: HasRequirements[Provided, R]
-    ): Runtime[F, E with Environment, P with Provided, Requirements, (A, B)] =
+    override def flatTapF[E, P, R, B](f: A => F[Runtime[F, E, P, R, B]])(implicit
+      ev: NoPostProvidedModules[Provided, Requirements, P]
+    ): Runtime[F, E with Environment, P with Provided, R with Requirements, A] =
+      flatMapF(a => f(a).map(_.as(a)))
+
+    override final def product[E, P, R, B](
+      r: Runtime[F, E, P, R, B]
+    )(implicit
+      ev: NoPostProvidedModules[Provided, Requirements, P]
+    ): Runtime[F, E with Environment, P with Provided, R with Requirements, (A, B)] =
       flatMap[E, P, R, (A, B)](v => r.map(v -> _))
 
-    override final def product_[E, P, R, B](r: Runtime[F, E, P, R, B])(implicit
-      ev: HasRequirements[Provided, R]
-    ): Runtime[F, E with Environment, P with Provided, Requirements, Unit] =
+    override final def product_[E, P, R, B](
+      r: Runtime[F, E, P, R, B]
+    )(implicit
+      ev: NoPostProvidedModules[Provided, Requirements, P]
+    ): Runtime[F, E with Environment, P with Provided, R with Requirements, Unit] =
       flatMap[E, P, R, B](_ => r).as(())
 
-    override final def productL[E, P, R, B](r: Runtime[F, E, P, R, B])(implicit
-      ev: HasRequirements[Provided, R]
-    ): Runtime[F, E with Environment, P with Provided, Requirements, A] =
+    override final def productL[E, P, R, B](
+      r: Runtime[F, E, P, R, B]
+    )(implicit
+      ev: NoPostProvidedModules[Provided, Requirements, P]
+    ): Runtime[F, E with Environment, P with Provided, R with Requirements, A] =
       flatMap[E, P, R, A](a => r.as(a))
 
-    override final def productR[E, P, R, B](r: Runtime[F, E, P, R, B])(implicit
-      ev: HasRequirements[Provided, R]
-    ): Runtime[F, E with Environment, P with Provided, Requirements, B] =
+    override final def productR[E, P, R, B](
+      r: Runtime[F, E, P, R, B]
+    )(implicit
+      ev: NoPostProvidedModules[Provided, Requirements, P]
+    ): Runtime[F, E with Environment, P with Provided, R with Requirements, B] =
       flatMap[E, P, R, B](_ => r)
+
+    override def evalTap[B](f: A => F[B]): Runtime[F, Environment, Provided, Requirements, A] =
+      evalMap(a => f(a).as(a))
   }
 
   final case class Consumer[F[_]: Monad, Environment, Provided, Requirements, UsedRequirements, A](
@@ -348,17 +382,33 @@ private[runtime4s] object RuntimeImpls {
   ](
     self: Impl[F, SelfEnvironment, SelfProvided, SelfRequirements, A],
     next: A => F[Impl[F, NextEnvironment, NextProvided, NextRequirements, NextA]]
-  )(implicit hasRequirements: HasRequirements[SelfProvided, NextRequirements])
-      extends Impl[F, SelfEnvironment with NextEnvironment, SelfProvided with NextProvided, SelfRequirements, NextA] {
-    override def widen[B >: NextA]
-      : Impl[F, SelfEnvironment with NextEnvironment, SelfProvided with NextProvided, SelfRequirements, B] =
+  ) extends Impl[
+        F,
+        SelfEnvironment with NextEnvironment,
+        SelfProvided with NextProvided,
+        SelfRequirements with NextRequirements,
+        NextA
+      ] {
+    override def widen[B >: NextA]: Impl[
+      F,
+      SelfEnvironment with NextEnvironment,
+      SelfProvided with NextProvided,
+      SelfRequirements with NextRequirements,
+      B
+    ] =
       copy[F, SelfEnvironment, SelfProvided, SelfRequirements, NextEnvironment, NextProvided, NextRequirements, A, B](
         next = next(_).map(_.widen[B])
       )
 
     override def evalMap[B](
       f: NextA => F[B]
-    ): Impl[F, SelfEnvironment with NextEnvironment, SelfProvided with NextProvided, SelfRequirements, B] =
+    ): Impl[
+      F,
+      SelfEnvironment with NextEnvironment,
+      SelfProvided with NextProvided,
+      SelfRequirements with NextRequirements,
+      B
+    ] =
       copy[F, SelfEnvironment, SelfProvided, SelfRequirements, NextEnvironment, NextProvided, NextRequirements, A, B](
         next = next(_).map(_.evalMap(f))
       )

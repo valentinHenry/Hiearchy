@@ -7,6 +7,10 @@
         </encoder>
     </appender>
 
+    <logger name="runtime4s.Runtime" level="${LOG_LEVEL:-TRACE}" additivity="false">
+        <appender-ref ref="STDOUT"/>
+    </logger>
+
     <root level="${LOG_LEVEL:-DEBUG}">
         <appender-ref ref="STDOUT"/>
     </root>

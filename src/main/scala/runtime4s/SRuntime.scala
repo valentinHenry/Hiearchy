@@ -1,17 +1,17 @@
 package fr.valentinhenry
 package runtime4s
 
-import runtime4s.capabilities.NoPostProvidedModules
+import runtime4s.Runtime.EmptyEnvironment
+import runtime4s.capabilities._
 
 import cats._
 import cats.effect.Sync
 import cats.syntax.all._
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
-import shapeless.<:!<
 
+import scala.annotation.implicitNotFound
 import scala.annotation.unchecked.uncheckedVariance
-import scala.annotation.{implicitNotFound, unused}
 
 sealed trait Runtime[F[_], -Environment, -Provided, -Requirements, +A] {
   def run(e: Environment)(implicit
@@ -29,25 +29,25 @@ sealed trait Runtime[F[_], -Environment, -Provided, -Requirements, +A] {
     f: A => Runtime[F, E, P, R, B]
   )(implicit
     ev: NoPostProvidedModules[Provided, Requirements, P] @uncheckedVariance
-  ): Runtime[F, E with Environment, P with Provided, R with Requirements, B]
+  ): Runtime[F, Environment with E, Provided with P, Requirements with R, B]
 
   def flatTap[E, P, R, B](
     f: A => Runtime[F, E, P, R, B]
   )(implicit
     ev: NoPostProvidedModules[Provided, Requirements, P] @uncheckedVariance
-  ): Runtime[F, E with Environment, P with Provided, R with Requirements, A]
+  ): Runtime[F, Environment with E, Provided with P, Requirements with R, A]
 
   def flatMapF[E, P, R, B](
     f: A => F[Runtime[F, E, P, R, B]]
   )(implicit
     ev: NoPostProvidedModules[Provided, Requirements, P] @uncheckedVariance
-  ): Runtime[F, E with Environment, P with Provided, R with Requirements, B]
+  ): Runtime[F, Environment with E, Provided with P, Requirements with R, B]
 
   def flatTapF[E, P, R, B](
     f: A => F[Runtime[F, E, P, R, B]]
   )(implicit
     ev: NoPostProvidedModules[Provided, Requirements, P] @uncheckedVariance
-  ): Runtime[F, E with Environment, P with Provided, R with Requirements, A]
+  ): Runtime[F, Environment with E, Provided with P, Requirements with R, A]
 
   def evalMap[B](f: A => F[B]): Runtime[F, Environment, Provided, Requirements, B]
   def evalTap[B](f: A => F[B]): Runtime[F, Environment, Provided, Requirements, A]
@@ -56,25 +56,85 @@ sealed trait Runtime[F[_], -Environment, -Provided, -Requirements, +A] {
     r: Runtime[F, E, P, R, B]
   )(implicit
     ev: NoPostProvidedModules[Provided, Requirements, P] @uncheckedVariance
-  ): Runtime[F, E with Environment, P with Provided, R with Requirements, (A, B)]
+  ): Runtime[F, Environment with E, Provided with P, Requirements with R, (A, B)]
 
   def product_[E, P, R, B](
     r: Runtime[F, E, P, R, B]
   )(implicit
     ev: NoPostProvidedModules[Provided, Requirements, P] @uncheckedVariance
-  ): Runtime[F, E with Environment, P with Provided, R with Requirements, Unit]
+  ): Runtime[F, Environment with E, Provided with P, Requirements with R, Unit]
 
   def productL[E, P, R, B](
     r: Runtime[F, E, P, R, B]
   )(implicit
     ev: NoPostProvidedModules[Provided, Requirements, P] @uncheckedVariance
-  ): Runtime[F, E with Environment, P with Provided, R with Requirements, A]
+  ): Runtime[F, Environment with E, Provided with P, Requirements with R, A]
 
   def productR[E, P, R, B](
     r: Runtime[F, E, P, R, B]
   )(implicit
     ev: NoPostProvidedModules[Provided, Requirements, P] @uncheckedVariance
-  ): Runtime[F, E with Environment, P with Provided, R with Requirements, B]
+  ): Runtime[F, Environment with E, Provided with P, Requirements with R, B]
+
+  def provide[Module: RuntimeKey](module: Module)(implicit
+    R: RequirementExtractor[F, Module],
+    ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+  ): Runtime[F, Environment, Module with Provided, R.Requirements with Requirements, Module]
+
+  def provideF[Module: RuntimeKey](module: F[Module])(implicit
+    R: RequirementExtractor[F, Module],
+    ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+  ): Runtime[F, Environment, Module with Provided, R.Requirements with Requirements, Module]
+
+  def provide_[Module: RuntimeKey](module: Module)(implicit
+    R: RequirementExtractor[F, Module],
+    ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+  ): Runtime[F, Environment, Module with Provided, R.Requirements with Requirements, Unit]
+
+  def provideF_[Module: RuntimeKey](module: F[Module])(implicit
+    R: RequirementExtractor[F, Module],
+    ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+  ): Runtime[F, Environment, Module with Provided, R.Requirements with Requirements, Unit]
+
+  def provideTap[Module: RuntimeKey](module: Module)(implicit
+    R: RequirementExtractor[F, Module],
+    ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+  ): Runtime[F, Environment, Module with Provided, R.Requirements with Requirements, A]
+
+  def provideFTap[Module: RuntimeKey](module: F[Module])(implicit
+    R: RequirementExtractor[F, Module],
+    ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+  ): Runtime[F, Environment, Module with Provided, R.Requirements with Requirements, A]
+
+  def swap[Module: RuntimeKey](module: Module)(implicit
+    R: RequirementExtractor[F, Module],
+    ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+  ): Runtime[F, Environment, Provided, R.Requirements with Requirements with Module, Module]
+
+  def swapF[Module: RuntimeKey](module: F[Module])(implicit
+    R: RequirementExtractor[F, Module],
+    ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+  ): Runtime[F, Environment, Provided, R.Requirements with Requirements with Module, Module]
+
+  def swap_[Module: RuntimeKey](module: Module)(implicit
+    R: RequirementExtractor[F, Module],
+    ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+  ): Runtime[F, Environment, Provided, R.Requirements with Requirements with Module, Unit]
+
+  def swapF_[Module: RuntimeKey](module: F[Module])(implicit
+    R: RequirementExtractor[F, Module],
+    ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+  ): Runtime[F, Environment, Provided, R.Requirements with Requirements with Module, Unit]
+
+  def swapTap[Module: RuntimeKey](module: Module)(implicit
+    R: RequirementExtractor[F, Module],
+    ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+  ): Runtime[F, Environment, Provided, R.Requirements with Requirements with Module, A]
+
+  def swapFTap[Module: RuntimeKey](module: F[Module])(implicit
+    R: RequirementExtractor[F, Module],
+    ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+  ): Runtime[F, Environment, Provided, R.Requirements with Requirements with Module, A]
 
   def narrow[P >: Provided @uncheckedVariance]: Runtime[F, Environment, P, Requirements, A]
 
@@ -112,54 +172,33 @@ object Runtime {
       extractProvided = _(RuntimeKey[M]).asInstanceOf[M]
     )
 
-  trait ProvideRequirements[F[_], A] {
-    type Requirements
-  }
-  object ProvideRequirements         {
-    type Aux[F[_], A, Req] = ProvideRequirements[F, A] { type Requirements = Req }
+  def provide[F[_]: Monad, Module: RuntimeKey](module: Module)(implicit
+    R: RequirementExtractor[F, Module]
+  ): Runtime[F, EmptyEnvironment, Module, R.Requirements, Module] =
+    RuntimeImpls.Producer[F, EmptyEnvironment, Module, R.Requirements, Module, Module](
+      inner = (module, module).pure[F]
+    )
 
-    implicit final def modifierRequirements[F[_], A, Req](implicit
-      @unused isModifier: A <:< ModifierRuntimeModule.Aux[F, Req]
-    ): ProvideRequirements.Aux[F, A, Req] =
-      new ProvideRequirements[F, A] {
-        override type Requirements = Req
-      }
+  def provide_[F[_]: Monad, Module: RuntimeKey](module: Module)(implicit
+    R: RequirementExtractor[F, Module]
+  ): Runtime[F, EmptyEnvironment, Module, R.Requirements, Unit] =
+    RuntimeImpls.Producer[F, EmptyEnvironment, Module, R.Requirements, Module, Unit](
+      inner = (module, ()).pure[F]
+    )
 
-    implicit final def nonModifierRequirements[F[_], A](implicit
-      @unused isNotAModifier: A <:!< ModifierRuntimeModule[F]
-    ): ProvideRequirements.Aux[F, A, EmptyRequirement] =
-      new ProvideRequirements[F, A] {
-        override type Requirements = EmptyRequirement
-      }
-  }
+  def swap[F[_]: Monad, Module: RuntimeKey](newModule: Module)(implicit
+    R: RequirementExtractor[F, Module] // TODO: Find a way to remove old module requirements
+  ): Runtime[F, EmptyEnvironment, EmptyProvided, Module with R.Requirements, Module] =
+    RuntimeImpls.Producer[F, EmptyEnvironment, EmptyProvided, Module with R.Requirements, Module, Module](
+      inner = (newModule, newModule).pure[F]
+    )
 
-  def provide[F[_]]: ProvidePartiallyApplied[F] =
-    new ProvidePartiallyApplied[F]
-
-  final class ProvidePartiallyApplied[F[_]] {
-    def apply[A](a: A)(implicit
-      K: RuntimeKey[A],
-      M: Monad[F],
-      R: ProvideRequirements[F, A]
-    ): Runtime[F, EmptyEnvironment, A, R.Requirements, A] =
-      RuntimeImpls.Producer[F, EmptyEnvironment, A, R.Requirements, A, A](
-        inner = M.pure((a, a))
-      )
-  }
-
-  def provide_[F[_]]: Provide_PartiallyApplied[F] =
-    new Provide_PartiallyApplied[F]
-
-  final class Provide_PartiallyApplied[F[_]] {
-    def apply[A](a: A)(implicit
-      K: RuntimeKey[A],
-      M: Monad[F],
-      R: ProvideRequirements[F, A]
-    ): Runtime[F, EmptyEnvironment, A, R.Requirements, Unit] =
-      RuntimeImpls.Producer[F, EmptyEnvironment, A, R.Requirements, A, Unit](
-        inner = M.pure((a, ()))
-      )
-  }
+  def swap_[F[_]: Monad, Module: RuntimeKey](newModule: Module)(implicit
+    R: RequirementExtractor[F, Module] // TODO: Find a way to remove old module requirements
+  ): Runtime[F, EmptyEnvironment, EmptyProvided, Module with R.Requirements, Unit] =
+    RuntimeImpls.Producer[F, EmptyEnvironment, EmptyProvided, Module with R.Requirements, Module, Unit](
+      inner = (newModule, ()).pure[F]
+    )
 
   def pure[F[_]: Monad, A](a: A): RA[F, A] =
     RuntimeImpls.Consumer[F, EmptyEnvironment, EmptyProvided, EmptyRequirement, Unit, A](
@@ -184,21 +223,33 @@ object Runtime {
   abstract class RuntimeFDSL[F[_]: Monad] {
     def empty: RA[F, Unit] = Runtime.empty[F]
 
-    // Gets an environment value
     def get[E]: Runtime[F, E, EmptyProvided, EmptyRequirement, E] = Runtime.get[F, E]
 
-    // Summon a provided module
     def summon[M: RuntimeKey]: Runtime[F, EmptyEnvironment, EmptyProvided, M, M] = Runtime.summon[F, M]
 
     def provide[A: RuntimeKey](a: A)(implicit
-      R: ProvideRequirements[F, A]
+      R: RequirementExtractor[F, A]
     ): Runtime[F, EmptyEnvironment, A, R.Requirements, A] =
-      Runtime.provide[F](a)(RuntimeKey[A], Monad[F], R)
+      Runtime.provide[F, A](a)
 
     def provide_[A: RuntimeKey](a: A)(implicit
-      R: ProvideRequirements[F, A]
+      R: RequirementExtractor[F, A]
     ): Runtime[F, EmptyEnvironment, A, R.Requirements, Unit] =
-      Runtime.provide_[F](a)(RuntimeKey[A], Monad[F], R)
+      Runtime.provide_[F, A](a)
+
+    def swap[Module: RuntimeKey](newModule: Module)(implicit
+      R: RequirementExtractor[F, Module] // TODO: Find a way to remove old module requirements
+    ): Runtime[F, EmptyEnvironment, EmptyProvided, Module with R.Requirements, Module] =
+      Runtime.swap[F, Module](newModule)
+
+    def swap_[Module: RuntimeKey](newModule: Module)(implicit
+      R: RequirementExtractor[F, Module] // TODO: Find a way to remove old module requirements
+    ): Runtime[F, EmptyEnvironment, EmptyProvided, Module with R.Requirements, Unit] =
+      Runtime.swap_[F, Module](newModule)
+
+    def delay[A](a: => A)(implicit S: Sync[F]): RA[F, A] = Runtime.delay[F, A](a)
+
+    def liftF[A](fa: F[A]): RA[F, A] = Runtime.liftF[F, A](fa)
   }
 }
 
@@ -206,6 +257,8 @@ private[runtime4s] object RuntimeImpls {
   final val loggerName = "runtime4s.Runtime"
 
   type ModuleMap = Map[RuntimeKey[_], Any]
+
+  def logger[F[_]: Sync]: F[Logger[F]] = Sync[F].delay(Slf4jLogger.getLoggerFromName[F](loggerName))
 
   sealed abstract class Impl[F[_]: Monad, Environment, Provided, Requirements, A]
       extends Runtime[F, Environment, Provided, Requirements, A]
@@ -216,7 +269,7 @@ private[runtime4s] object RuntimeImpls {
       P: Parallel[F],
       S: Sync[F]
     ): F[Unit] =
-      S.delay(Slf4jLogger.getLoggerFromName[F](loggerName)).flatMap { implicit logger =>
+      logger[F].flatMap { implicit logger =>
         def printRuntime(modules: ModuleMap): F[Unit] = {
           val modifiers: List[String] = modules.values.toList.collect { case m: ModifierRuntimeModule[F] @unchecked =>
             m.getClass.getSimpleName
@@ -249,7 +302,9 @@ private[runtime4s] object RuntimeImpls {
             .parSequence_
 
         for {
+          _         <- Logger[F].debug("Collecting modules")
           collected <- collect(e, RuntimeModuleCollector(Map.empty[RuntimeKey[_], Any], Nil))
+          _         <- Logger[F].debug(s"Running before run on ${collected._1.modules.size} modules")
           modules   <- collected._1.toCollection[F].beforeRun
           _         <- printRuntime(modules)
           _         <- run(modules)
@@ -278,59 +333,128 @@ private[runtime4s] object RuntimeImpls {
       f: A => Runtime[F, E, P, R, B]
     )(implicit
       ev: NoPostProvidedModules[Provided, Requirements, P]
-    ): Runtime[F, E with Environment, P with Provided, R with Requirements, B] =
+    ): Runtime[F, Environment with E, Provided with P, Requirements with R, B] =
       flatMapF[E, P, R, B](f(_).pure[F])
 
     override def flatTap[E, P, R, B](f: A => Runtime[F, E, P, R, B])(implicit
       ev: NoPostProvidedModules[Provided, Requirements, P]
-    ): Runtime[F, E with Environment, P with Provided, R with Requirements, A] =
+    ): Runtime[F, Environment with E, Provided with P, Requirements with R, A] =
       flatMap(a => f(a).as(a))
 
     override def flatMapF[E, P, R, B](
       f: A => F[Runtime[F, E, P, R, B]]
     )(implicit
       ev: NoPostProvidedModules[Provided, Requirements, P]
-    ): Runtime[F, E with Environment, P with Provided, R with Requirements, B] =
-      FlatMap[F, Environment, Provided, Requirements, E, P, R, A, B](
-        this,
-        f.asInstanceOf[A => F[Impl[F, E, P, R, B]]]
-      )
+    ): Runtime[F, Environment with E, Provided with P, Requirements with R, B] =
+      FlatMap[F, Environment, Provided, Requirements, E, P, R, A, B](this, f)
 
     override def flatTapF[E, P, R, B](f: A => F[Runtime[F, E, P, R, B]])(implicit
       ev: NoPostProvidedModules[Provided, Requirements, P]
-    ): Runtime[F, E with Environment, P with Provided, R with Requirements, A] =
+    ): Runtime[F, Environment with E, Provided with P, Requirements with R, A] =
       flatMapF(a => f(a).map(_.as(a)))
 
     override final def product[E, P, R, B](
       r: Runtime[F, E, P, R, B]
     )(implicit
       ev: NoPostProvidedModules[Provided, Requirements, P]
-    ): Runtime[F, E with Environment, P with Provided, R with Requirements, (A, B)] =
+    ): Runtime[F, Environment with E, Provided with P, Requirements with R, (A, B)] =
       flatMap[E, P, R, (A, B)](v => r.map(v -> _))
 
     override final def product_[E, P, R, B](
       r: Runtime[F, E, P, R, B]
     )(implicit
       ev: NoPostProvidedModules[Provided, Requirements, P]
-    ): Runtime[F, E with Environment, P with Provided, R with Requirements, Unit] =
+    ): Runtime[F, Environment with E, Provided with P, Requirements with R, Unit] =
       flatMap[E, P, R, B](_ => r).as(())
 
     override final def productL[E, P, R, B](
       r: Runtime[F, E, P, R, B]
     )(implicit
       ev: NoPostProvidedModules[Provided, Requirements, P]
-    ): Runtime[F, E with Environment, P with Provided, R with Requirements, A] =
+    ): Runtime[F, Environment with E, Provided with P, Requirements with R, A] =
       flatMap[E, P, R, A](a => r.as(a))
 
     override final def productR[E, P, R, B](
       r: Runtime[F, E, P, R, B]
     )(implicit
       ev: NoPostProvidedModules[Provided, Requirements, P]
-    ): Runtime[F, E with Environment, P with Provided, R with Requirements, B] =
+    ): Runtime[F, Environment with E, Provided with P, Requirements with R, B] =
       flatMap[E, P, R, B](_ => r)
 
     override def evalTap[B](f: A => F[B]): Runtime[F, Environment, Provided, Requirements, A] =
       evalMap(a => f(a).as(a))
+
+    override def provide[Module: RuntimeKey](module: Module)(implicit
+      R: RequirementExtractor[F, Module],
+      ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+    ): Runtime[F, Environment, Provided with Module, Requirements with R.Requirements, Module] =
+      productR(Runtime.provide[F, Module](module))
+
+    override def provideF[Module: RuntimeKey](module: F[Module])(implicit
+      R: RequirementExtractor[F, Module],
+      ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+    ): Runtime[F, Environment, Provided with Module, Requirements with R.Requirements, Module] =
+      flatMapF(_ => module.map(Runtime.provide[F, Module](_)))
+
+    override def provide_[Module: RuntimeKey](module: Module)(implicit
+      R: RequirementExtractor[F, Module],
+      ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+    ): Runtime[F, Environment, Provided with Module, Requirements with R.Requirements, Unit] =
+      product_(Runtime.provide[F, Module](module))
+
+    override def provideF_[Module: RuntimeKey](module: F[Module])(implicit
+      R: RequirementExtractor[F, Module],
+      ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+    ): Runtime[F, Environment, Provided with Module, Requirements with R.Requirements, Unit] =
+      flatMapF(_ => module.map(Runtime.provide[F, Module](_))).as(())
+
+    override def provideTap[Module: RuntimeKey](module: Module)(implicit
+      R: RequirementExtractor[F, Module],
+      ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+    ): Runtime[F, Environment, Provided with Module, Requirements with R.Requirements, A] =
+      productL(Runtime.provide[F, Module](module))
+
+    override def provideFTap[Module: RuntimeKey](module: F[Module])(implicit
+      R: RequirementExtractor[F, Module],
+      ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+    ): Runtime[F, Environment, Provided with Module, Requirements with R.Requirements, A] =
+      flatTapF(_ => module.map(Runtime.provide[F, Module](_)))
+
+    override def swap[Module: RuntimeKey](module: Module)(implicit
+      R: RequirementExtractor[F, Module],
+      ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+    ): Runtime[F, Environment, Provided, Requirements with Module with R.Requirements, Module] =
+      productR(Runtime.swap[F, Module](module))
+
+    override def swapF[Module: RuntimeKey](module: F[Module])(implicit
+      R: RequirementExtractor[F, Module],
+      ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+    ): Runtime[F, Environment, Provided, Requirements with Module with R.Requirements, Module] =
+      flatMapF(_ => module.map(Runtime.swap[F, Module](_)))
+
+    override def swap_[Module: RuntimeKey](module: Module)(implicit
+      R: RequirementExtractor[F, Module],
+      ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+    ): Runtime[F, Environment, Provided, Requirements with Module with R.Requirements, Unit] =
+      product_(Runtime.swap[F, Module](module))
+
+    override def swapF_[Module: RuntimeKey](module: F[Module])(implicit
+      R: RequirementExtractor[F, Module],
+      ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+    ): Runtime[F, Environment, Provided, Requirements with Module with R.Requirements, Unit] =
+      flatMapF(_ => module.map(Runtime.swap[F, Module](_))).as(())
+
+    override def swapTap[Module: RuntimeKey](module: Module)(implicit
+      R: RequirementExtractor[F, Module],
+      ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+    ): Runtime[F, Environment, Provided, Requirements with Module with R.Requirements, A] =
+      productL(Runtime.swap[F, Module](module))
+
+    override def swapFTap[Module: RuntimeKey](module: F[Module])(implicit
+      R: RequirementExtractor[F, Module],
+      ev: NoPostProvidedModules[Provided, Requirements, Module] @uncheckedVariance
+    ): Runtime[F, Environment, Provided, Requirements with Module with R.Requirements, A] =
+      flatTapF(_ => module.map(Runtime.swap[F, Module](_)))
   }
 
   final case class Consumer[F[_]: Monad, Environment, Provided, Requirements, UsedRequirements, A](
@@ -381,7 +505,7 @@ private[runtime4s] object RuntimeImpls {
     NextA
   ](
     self: Impl[F, SelfEnvironment, SelfProvided, SelfRequirements, A],
-    next: A => F[Impl[F, NextEnvironment, NextProvided, NextRequirements, NextA]]
+    next: A => F[Runtime[F, NextEnvironment, NextProvided, NextRequirements, NextA]]
   ) extends Impl[
         F,
         SelfEnvironment with NextEnvironment,
@@ -420,7 +544,10 @@ private[runtime4s] object RuntimeImpls {
       self
         .collect(requirements, collector)
         .flatMap { case (collector, a) =>
-          next(a).flatMap(_.collect(requirements, collector))
+          next(a).flatMap(
+            _.asInstanceOf[Impl[F, NextEnvironment, NextProvided, NextRequirements, NextA]]
+              .collect(requirements, collector)
+          )
         }
   }
 
@@ -438,30 +565,34 @@ private[runtime4s] object RuntimeImpls {
           else RuntimeKey[ModuleT] :: order
       )
 
-    def toCollection[F[_]: Monad]: RuntimeModuleCollection[F, Nothing] = RuntimeModuleCollection(modules.pure[F], order)
+    def toCollection[F[_]: Sync]: RuntimeModuleCollection[F, Nothing] = RuntimeModuleCollection(modules.pure[F], order)
   }
 
-  final case class RuntimeModuleCollection[F[_]: Monad, Provided](
+  final case class RuntimeModuleCollection[F[_]: Sync, Provided](
     modules: F[ModuleMap],
     order: List[RuntimeKey[_]]
   ) extends Product {
 
-    private[runtime4s] val beforeRun: F[ModuleMap] = {
-      def beforeRun(updatedModules: ModuleMap, remaining: List[RuntimeKey[_]]): F[ModuleMap] = remaining match {
-        case Nil       => updatedModules.pure[F]
-        case h :: tail =>
-          updatedModules(h) match {
-            case module: ModifierRuntimeModule[F] @unchecked =>
-              module
-                .beforeRun(copy(modules = updatedModules.pure[F]))
-                .flatMap(_.modules.flatMap(beforeRun(_, tail)))
-            case _                                           =>
-              beforeRun(updatedModules, tail)
-          }
-      }
+    private[runtime4s] val beforeRun: F[ModuleMap] =
+      logger[F].flatMap { implicit logger =>
+        def beforeRun(updatedModules: ModuleMap, remaining: List[RuntimeKey[_]]): F[ModuleMap] = remaining match {
+          case Nil       => updatedModules.pure[F]
+          case h :: tail =>
+            updatedModules(h) match {
+              case module: ModifierRuntimeModule[F] @unchecked =>
+                Logger[F].trace(s"Module ${h.id} is a modifier, applying itself") *>
+                  module
+                    .beforeRun(copy(modules = updatedModules.pure[F]))
+                    .flatMap(_.modules.flatMap(beforeRun(_, tail)))
+              case _                                           =>
+                Logger[F].trace(s"Module ${h.id} is not a modifier, doing nothing") *>
+                  beforeRun(updatedModules, tail)
+            }
+        }
 
-      modules.flatMap(beforeRun(_, order))
-    }
+        Logger[F].debug(s"Before run in order: ${order.map(_.id).mkString(" -> ")}") *>
+          modules.flatMap(beforeRun(_, order))
+      }
 
     def update[ModuleT: RuntimeKey](modifyFn: ModuleT => ModuleT)(implicit
       hasModule: Provided <:< ModuleT
@@ -481,13 +612,5 @@ private[runtime4s] object RuntimeImpls {
       hasModule: Provided <:< ModuleT
     ): RuntimeModuleCollection[F, Provided] =
       updateF[ModuleT](module => useF(module).as(module))
-
-    private[runtime4s] def addModule[ModuleT: RuntimeKey](
-      module: ModuleT
-    ): RuntimeModuleCollection[F, Provided with ModuleT] =
-      RuntimeModuleCollection[F, Provided with ModuleT](
-        modules = modules.map(_ + (RuntimeKey[ModuleT] -> module)),
-        order = RuntimeKey[ModuleT] :: order
-      )
   }
 }

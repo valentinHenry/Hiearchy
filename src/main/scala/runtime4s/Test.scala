@@ -21,7 +21,7 @@ object Test extends IOApp {
 
     def provideModule2: REP[IO, Config2, Module2] =
       Runtime.get[Config2].flatMap { config =>
-        Runtime.provide_(Module2(config))
+        Runtime.provide_[Module2](Module2.Live(config))
       }
 
     def makeSubModule: Runtime[IO, Config3, Module3, Module2 with Module1, Unit] =
@@ -33,14 +33,12 @@ object Test extends IOApp {
       } yield ()
 
     Runtime.empty
-      .product_(provideModule2)
-      .product_(provideModule2)
-      .product_(provideModule2)
       .product_(provideModule1)
-      .product_(Runtime.provide_(Module4()))
-      .product_(Runtime.provide_(Module4()))
-      .product_(Runtime.provide_(Module4()))
+      .product_(provideModule2)
       .product_(makeSubModule)
+      .provide(Module4())
+      .product_(Runtime.liftF(Slf4jLogger.getLogger[IO].info("Coucou twa")))
+      .product_(Runtime.swap[Module2](Module2.Test()))
       .run(Config())
       .as(Success)
   }
@@ -51,12 +49,22 @@ trait Config2
 trait Config3
 final case class Config() extends Config1 with Config2 with Config3
 
-final case class Module1(c1: Config1)                               extends RunnableRuntimeModule[IO] {
+final case class Module1(c1: Config1) extends RunnableRuntimeModule[IO] {
   override def run: IO[Unit] = Slf4jLogger.getLogger[IO].info("I am running")
 }
-final case class Module2(c2: Config2) {
-  val text: String = "hello there"
+trait Module2 {
+  def text: String
 }
+object Module2 {
+  final case class Live(c2: Config2) extends Module2 {
+    val text: String = "hello there"
+  }
+  final case class Test()            extends Module2 {
+    override def text: String = "this is a test"
+  }
+
+}
+
 final case class Module3(config: Config3, m1: Module1, m2: Module2) extends ModifierRuntimeModule[IO] {
   override type Requirements = Module2
 

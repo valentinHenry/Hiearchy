@@ -9,7 +9,7 @@ import cats.effect.{ExitCode, IO, IOApp}
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 object Test extends IOApp {
-  val jsp = implicitly[Any with String with Float <:< Float]
+  val logger = Slf4jLogger.getLogger[IO]
 
   override def run(args: List[String]): IO[ExitCode] = {
     val Runtime: RuntimeFDSL[IO] = dsl[IO]
@@ -24,7 +24,7 @@ object Test extends IOApp {
         Runtime.provide_[Module2](Module2.Live(config))
       }
 
-    def makeSubModule: Runtime[IO, Config3, Module3, Module2 with Module1, Unit] =
+    def makeSubModule: REPR[IO, Config3, Module3, Module2 with Module1] =
       for {
         m1      <- Runtime.summon[Module1]
         m2      <- Runtime.summon[Module2]
@@ -32,13 +32,14 @@ object Test extends IOApp {
         _       <- Runtime.provide_(Module3(config3, m1, m2))
       } yield ()
 
-    Runtime.empty
-      .product_(provideModule1)
-      .product_(provideModule2)
-      .product_(makeSubModule)
+//    Runtime.empty not necessary
+//      .product(provideModule1)
+    provideModule1
+      .product(provideModule2)
+      .product(makeSubModule)
       .provide(Module4())
-      .product_(Runtime.liftF(Slf4jLogger.getLogger[IO].info("Coucou twa")))
-      .product_(Runtime.swap[Module2](Module2.Test()))
+      .evalTap(_ => logger.info("Salut"))
+      .swapF[Module2](logger.info("swapping module2").as(Module2.Test()))
       .run(Config())
       .as(Success)
   }

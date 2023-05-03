@@ -5,14 +5,14 @@ import hierarchy.HierarchyImpls.HierarchyModuleCollection
 
 import scala.reflect.{ClassTag, classTag}
 
-final class ModuleKey[ModuleT](val id: String) extends AnyVal {
-  def narrowed[SubModuleT <: ModuleT]: ModuleKey[SubModuleT] = this.asInstanceOf[ModuleKey[SubModuleT]]
+final class Key[ModuleT](val id: String) extends AnyVal {
+  def narrowed[SubModuleT <: ModuleT]: Key[SubModuleT] = this.asInstanceOf[Key[SubModuleT]]
 }
 
-object ModuleKey {
-  def apply[ModuleT: ModuleKey]: ModuleKey[ModuleT]            = implicitly
-  implicit def instance[ModuleT: ClassTag]: ModuleKey[ModuleT] =
-    new ModuleKey(classTag[ModuleT].toString())
+object Key {
+  def apply[ModuleT: Key]: Key[ModuleT]            = implicitly
+  implicit def instance[ModuleT: ClassTag]: Key[ModuleT] =
+    new Key(classTag[ModuleT].toString())
 }
 
 trait ModifierHierarchyModule[F[_]] {

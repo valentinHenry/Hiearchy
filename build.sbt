@@ -12,5 +12,7 @@ lazy val root = (project in file("."))
     libraryDependencies += "ch.qos.logback" % "logback-classic"     % "1.4.6",
     libraryDependencies += "org.slf4j"      % "slf4j-api"           % "2.0.5",
     libraryDependencies += "org.typelevel" %% "munit-cats-effect-3" % "1.0.7" % "test",
-    addCompilerPlugin("org.typelevel" % "kind-projector" % "0.13.2" cross CrossVersion.full)
+    addCompilerPlugin("org.typelevel" % "kind-projector"     % "0.13.2" cross CrossVersion.full),
+    addCompilerPlugin("com.olegpy"   %% "better-monadic-for" % "0.3.1")
   )
+

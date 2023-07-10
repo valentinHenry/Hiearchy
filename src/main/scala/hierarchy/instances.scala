@@ -103,13 +103,16 @@ object requirements {
 
 sealed trait NoIntersect[L, R]
 object NoIntersect {
-  implicit def base[L, R]: NoIntersect[L, R] = new NoIntersect[L, R] {}
-  implicit def intersect[L, R](implicit
-    @unused i: Intersect[L, R],
-    @unused LNotAny: L =:!= Any,
-    @unused RNotAny: R =:!= Any
-  ): NoIntersect[L, R] =
-    sys.error("Unexpected invocation")
+  implicit val singleton: NoIntersect[Any, Any]         = new NoIntersect[Any, Any] {}
+  protected[this] def instance[L, R]: NoIntersect[L, R] = singleton.asInstanceOf[NoIntersect[L, R]]
+  implicit def endTail[L, R](implicit
+    @unused ev3: Not[Contained[R, L]]
+  ): NoIntersect[L, R] = instance
+
+  implicit def rec[L, RElt, RTail](implicit
+    @unused found: NoIntersect[L, RTail],
+    @unused ev3: Not[Contained[RElt, L]]
+  ): NoIntersect[L, RElt &: RTail] = instance
 }
 
 sealed trait Intersect[L, R]

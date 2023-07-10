@@ -1,7 +1,7 @@
-Hierarchy - A monad to order them all
+Hierarchy - A monad to ~~rule~~ order them all
 =========
 
-Hiearchy provides a filly functional way to handle modules creation, inheritance, update and run.
+Hiearchy provides a fully functional way to handle modules creation, inheritance, update and run.
 
 
 
